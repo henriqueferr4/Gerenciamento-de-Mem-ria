@@ -135,31 +135,31 @@ def print_results(
     metrics: dict,
     elapsed: float,
 ) -> None:
-    W = 52
+    W = 50
 
     def row(label, value):
-        print(f"║  {label:<21}: {str(value):<26}║")
+        print(f"║  {label:<20}: {str(value):<26}║")
 
     print()
     print("╔" + "═" * W + "╗")
-    print("║        LRU        ║")
+    print("║" + " " * (20) + "   LRU    " + " " * (20) + "║")
     print("╠" + "═" * W + "╣")
-    row("Arquivo de acessos",            filepath)
-    row("Memória física",     fmt_bytes(mem_size))
-    row("Tamanho da página",  fmt_bytes(page_size))
+    row("Arquivo de acessos", filepath)
+    row("Memória física", fmt_bytes(mem_size))
+    row("Tamanho da página", fmt_bytes(page_size))
     row("Quadros disponíveis", num_frames)
     print("╠" + "═" * W + "╣")
     row("Endereços acessados", f"{metrics['total_acessos']:,}")
     print("╠" + "═" * W + "╣")
-    row("Faltas de página",    f"{metrics['falta_total']:,}")
-    row("  ↳ Falta por falta_primeiro_acesso acesso",   f"{metrics['falta_primeiro_acesso']:,}")
+    row("Faltas de página", f"{metrics['falta_total']:,}")
+    row("  ↳ Por 1º acesso", f"{metrics['falta_primeiro_acesso']:,}")
     row("  ↳ Por capacidade", f"{metrics['falta_por_capacidade']:,}")
-    row("Porcentagem",   f"{metrics['porcent_faltas']*100:.2f} %")
+    row("Eficiência", f"{metrics['porcent_faltas']*100:.2f} %")
     print("╠" + "═" * W + "╣")
-    row("Tempo de execução",  f"{elapsed:.2f} s")
+    row("Tempo de execução", f"{elapsed:.2f} s")
     if elapsed > 0:
         taxa = metrics['total_acessos'] / elapsed
-        row("Taxa de leitura",   f"{taxa:,.0f} acessos/s")
+        row("Taxa de leitura", f"{taxa:,.0f} acessos/s")
     print("╚" + "═" * W + "╝")
     print()
 
@@ -184,7 +184,8 @@ def main():
 
     print(f"\nArquivo : {filepath} ")
     print(f"Memória : {fmt_bytes(mem_size)}  |  Página: {fmt_bytes(page_size)}  |  Quadros: {num_frames}")
-    print("Simulando LRU...\n")
+    print("Analisando o arquivo (Passo 1/2)...")
+    print("Simulando LRU (Passo 2/2)...")
 
     inicio = time.perf_counter()
 
