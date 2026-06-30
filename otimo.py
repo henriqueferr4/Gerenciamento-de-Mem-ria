@@ -1,9 +1,8 @@
-# Ótimo para gerenciamento de memória - Rápido e Econômico em RAM
+# Ótimo para gerenciamento de memória - Baixo consumo de RAM
 
 import io
 import sys
 import time
-from array import array  # Estrutura nativa super compacta para números
 
 try:
     import zstandard as zstd
@@ -46,14 +45,15 @@ def open_text_stream(filepath: str):
         return open(filepath, "r", encoding="utf-8")
 
 
-# ---- Implementação do ÓTIMO OTIMIZADO ---- #
+# ---- Implementação do ÓTIMO OTIMIZADO PARA RAM ---- #
 
-def simulate_optimal_fast_low_ram(filepath: str, page_size: int, num_frames: int) -> dict:
-    # Usamos 'Q' (unsigned long long - 8 bytes) para suportar endereços/páginas gigantescos de 64-bits
-    acessos = array('Q')
+def simulate_optimal_low_ram(filepath: str, page_size: int, num_frames: int) -> dict:
+    # PASSO 1: Descobrir o futuro lendo o arquivo linha por linha direto do disco
+    # Em vez de guardar os índices de tudo, vamos apenas contar quantas vezes cada página aparece no total
+    contagem_futura = {}
+    total_acessos = 0
     seen_pages = set()
 
-    print("1. Carregando e compactando dados na RAM...")
     with open_text_stream(filepath) as stream:
         for line in stream:
             line = line.strip()
@@ -67,74 +67,76 @@ def simulate_optimal_fast_low_ram(filepath: str, page_size: int, num_frames: int
                 continue
 
             page = address // page_size
-            acessos.append(page)
+            total_acessos += 1
+            contagem_futura[page] = contagem_futura.get(page, 0) + 1
 
-    total_acessos = len(acessos)
     if total_acessos == 0:
         return {
             "total_acessos": 0, "falta_total": 0, "falta_primeiro_acesso": 0,
             "falta_por_capacidade": 0, "porcent_faltas": 0.0,
         }
 
-    print("2. Mapeando posições futuras...")
-    # Cria o mapa de posições futuras
-    futuro_indices = {}
-    for idx, page in enumerate(acessos):
-        if page not in futuro_indices:
-            futuro_indices[page] = []
-        futuro_indices[page].append(idx)
-
-    # Ponteiro de controle para saber qual a próxima aparição da página
-    ponteiros_futuro = {pag: 0 for pag in futuro_indices}
-
+    # PASSO 2: Simular o algoritmo Ótimo relendo o arquivo do disco
     frames = set()
     falta_total = 0
     falta_primeiro_acesso = 0
     falta_por_capacidade = 0
 
-    print("3. Executando simulação do Algoritmo Ótimo...")
-    for i, page in enumerate(acessos):
-        ponteiros_futuro[page] += 1
+    with open_text_stream(filepath) as stream:
+        for line in stream:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                address = int(line, 0)
+            except ValueError:
+                continue
+            if address < 0:
+                continue
 
-        is_first_time = page not in seen_pages
-        if is_first_time:
-            seen_pages.add(page)
+            page = address // page_size
 
-        # Hit
-        if page in frames:
-            continue
+            # Como acabamos de ler essa página, decrementamos ela do mapa do "futuro"
+            contagem_futura[page] -= 1
 
-        # Miss
-        falta_total += 1
-        if is_first_time:
-            falta_primeiro_acesso += 1
-        else:
-            falta_por_capacidade += 1
+            is_first_time = page not in seen_pages
+            if is_first_time:
+                seen_pages.add(page)
 
-        # Espaço disponível nos quadros físicos
-        if len(frames) < num_frames:
-            frames.add(page)
-        else:
-            # Algoritmo Ótimo Real: Encontra quem vai demorar MAIS tempo para aparecer
-            pag_substituir = None
-            maior_distancia = -1
+            # Hit
+            if page in frames:
+                continue
 
-            for pag_memoria in frames:
-                historico = futuro_indices[pag_memoria]
-                ptr = ponteiros_futuro[pag_memoria]
+            # Miss
+            falta_total += 1
+            if is_first_time:
+                falta_primeiro_acesso += 1
+            else:
+                falta_por_capacidade += 1
 
-                if ptr >= len(historico):
-                    # Essa página NUNCA mais será usada. É a candidata perfeita.
-                    pag_substituir = pag_memoria
-                    break
-                else:
-                    proximo_uso = historico[ptr]
-                    if proximo_uso > maior_distancia:
-                        maior_distancia = proximo_uso
+            # Inserção na memória
+            if len(frames) < num_frames:
+                frames.add(page)
+            else:
+                # Escolhe quem vai sair baseado em quem tem a MENOR contagem de usos restantes no futuro.
+                # Se a contagem for 0, significa que ela nunca mais será usada, sendo a candidata perfeita.
+                pag_substituir = None
+                menor_uso_futuro = float('inf')
+
+                for pag_memoria in frames:
+                    restante = contagem_futura[pag_memoria]
+
+                    if restante == 0:
+                        pag_substituir = pag_memoria
+                        break
+
+                    # Se todas ainda vão ser usadas, tiramos a que tem menos acessos restantes
+                    if restante < menor_uso_futuro:
+                        menor_uso_futuro = restante
                         pag_substituir = pag_memoria
 
-            frames.remove(pag_substituir)
-            frames.add(page)
+                frames.remove(pag_substituir)
+                frames.add(page)
 
     porcent_faltas = (total_acessos - falta_total) / total_acessos if total_acessos else 0.0
 
@@ -164,14 +166,14 @@ def print_results(
         metrics: dict,
         elapsed: float,
 ) -> None:
-    W = 52
+    W = 50
 
     def row(label, value):
-        print(f"║  {label:<21}: {str(value):<26}║")
+        print(f"║  {label:<20}: {str(value):<26}║")
 
     print()
     print("╔" + "═" * W + "╗")
-    print("║     ÓTIMO OTIMIZADO       ║")
+    print("║" + " " * (20) + "  ÓTIMO   " + " " * (20) + "║")
     print("╠" + "═" * W + "╣")
     row("Arquivo de acessos", filepath)
     row("Memória física", fmt_bytes(mem_size))
@@ -181,9 +183,9 @@ def print_results(
     row("Endereços acessados", f"{metrics['total_acessos']:,}")
     print("╠" + "═" * W + "╣")
     row("Faltas de página", f"{metrics['falta_total']:,}")
-    row("  ↳ Falta por 1º acesso", f"{metrics['falta_primeiro_acesso']:,}")
+    row("  ↳ Por 1º acesso", f"{metrics['falta_primeiro_acesso']:,}")
     row("  ↳ Por capacidade", f"{metrics['falta_por_capacidade']:,}")
-    row("Porcentagem", f"{metrics['porcent_faltas'] * 100:.2f} %")
+    row("Eficiência", f"{metrics['porcent_faltas'] * 100:.2f} %")
     print("╠" + "═" * W + "╣")
     row("Tempo de execução", f"{elapsed:.2f} s")
     if elapsed > 0:
@@ -212,10 +214,13 @@ def main():
 
     print(f"\nArquivo : {filepath} ")
     print(f"Memória : {fmt_bytes(mem_size)}  |  Página: {fmt_bytes(page_size)}  |  Quadros: {num_frames}")
+    print("Analisando o arquivo (Passo 1/2)...")
+    print("Simulando algoritmo Ótimo (Passo 2/2)...")
 
     inicio = time.perf_counter()
 
-    metrics = simulate_optimal_fast_low_ram(filepath, page_size, num_frames)
+    # Passamos o caminho do arquivo em vez do stream para abrir duas vezes lá dentro
+    metrics = simulate_optimal_low_ram(filepath, page_size, num_frames)
 
     elapsed = time.perf_counter() - inicio
 
